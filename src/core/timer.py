@@ -62,7 +62,7 @@ class PomodoroTimer:
             self.current_time = self.work_time
             self.is_work_session = True
         
-        self.on_session_end(self.is_work_session)
+        self.on_session_end(self.is_work_session, None)  # Noneを渡すようにする
         
         if not self.settings_manager.get_setting('auto_start'):
             self.pause()

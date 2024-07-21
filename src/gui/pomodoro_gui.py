@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 from core.timer import PomodoroTimer
 from gui.settings_gui import SettingsGUI
+from core.enhanced_timer import EnhancedPomodoroTimer
 from utils.database_manager import DatabaseManager
 from utils.window_tracker import WindowTracker
 from core.settings_manager import SettingsManager  # この行を追加
@@ -16,7 +17,7 @@ class PomodoroGUI:
         self.db_manager = db_manager
 
         self.master.title("シュタインズ・ゲート風ポモドーロタイマー")
-        self.master.geometry("400x350")
+        self.master.geometry("600x400")
         self.master.configure(bg='#1e1e1e')
 
         self.style = ttk.Style()
@@ -24,13 +25,14 @@ class PomodoroGUI:
         self.style.configure('TButton', background='#4a4a4a', foreground='white')
         self.style.map('TButton', background=[('active', '#6a6a6a')])
 
-        self.timer = PomodoroTimer(
+        self.timer = EnhancedPomodoroTimer(
             self.settings_manager.get_setting('work_time'),
             self.settings_manager.get_setting('short_break'),
             self.settings_manager.get_setting('long_break'),
             self.update_timer_display,
             self.on_session_end,
-            self.settings_manager
+            self.settings_manager,
+            "pomodoro.db"  # データベースのパスを指定
         )
 
         self.last_update_time = time.time()
@@ -73,6 +75,10 @@ class PomodoroGUI:
         self.settings_button = ttk.Button(button_frame, text="設定", command=self.open_settings)
         self.settings_button.pack(side=tk.LEFT, padx=5)
 
+        # セッション情報表示用のテキストウィジェットを追加
+        self.session_info = tk.Text(self.master, height=10, width=50)
+        self.session_info.pack(pady=10)
+
     def toggle_timer(self):
         if self.timer.running:
             if self.timer.paused:
@@ -94,8 +100,15 @@ class PomodoroGUI:
             self.current_session_id = self.db_manager.start_session("work" if self.timer.is_work_session else "break")
             self.current_pomodoro_id = self.db_manager.start_pomodoro()
             self.start_window_tracking()
+            # 初回起動時に前回のセッション情報を表示
+            self.show_previous_session_info("work" if self.timer.is_work_session else "break")
         self.update_button_states()
         self.smooth_update_progress()
+
+    def show_previous_session_info(self, session_type):
+        info = self.timer.get_previous_session_info(session_type)
+        self.session_info.delete(1.0, tk.END)
+        self.session_info.insert(tk.END, info)
 
     def reset_timer(self):
         if self.current_session_id:
@@ -131,7 +144,7 @@ class PomodoroGUI:
 
             self.master.after(16, self.smooth_update_progress)  # 約60FPSで更新
 
-    def on_session_end(self, is_work_session):
+    def on_session_end(self, is_work_session, previous_session_info):
         if self.current_session_id:
             self.db_manager.end_session(self.current_session_id)
         if self.current_pomodoro_id:
@@ -147,8 +160,12 @@ class PomodoroGUI:
         
         # 新しいセッションとポモドーロの開始をデータベースに記録
         self.current_session_id = self.db_manager.start_session("work" if is_work_session else "break")
-        self.current_pomodoro_id = self.db_manager.start_pomodoro()
+        self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id)  # セッションIDを渡すように変更
         self.stop_window_tracking()
+
+        # 前回のセッション情報を表示
+        self.session_info.delete(1.0, tk.END)
+        self.session_info.insert(tk.END, previous_session_info)
 
     def open_settings(self):
         if not self.timer.running:
