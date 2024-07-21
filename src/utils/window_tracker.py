@@ -1,5 +1,6 @@
 import ctypes
 import ctypes.wintypes
+import time
 
 class WindowTracker:
     def __init__(self, db_manager):
@@ -7,6 +8,7 @@ class WindowTracker:
         self.kernel32 = ctypes.windll.kernel32
         self.psapi = ctypes.windll.psapi
         self.db_manager = db_manager
+        self.running = True
 
     def get_active_window_info(self):
         hwnd = self.user32.GetForegroundWindow()
@@ -34,19 +36,25 @@ class WindowTracker:
             'window_name': window_name.value
         }
 
-    def track_active_window(self, callback, interval=30):
-        import time
-        while True:
-            window_info = self.get_active_window_info()
-            callback(window_info)
-            time.sleep(interval)
+    def start_tracking(self, session_id, pomodoro_id):
+        last_window_info = None
+        start_time = time.time()
 
-    def start_tracking(self, session_id, pomodoro_id, interval=30):
-        import time
-        while True:
+        while self.running:
             window_info = self.get_active_window_info()
-            self.db_manager.record_activity(session_id, pomodoro_id, window_info['app_name'], window_info['window_name'])
-            time.sleep(interval)
+            
+            if window_info != last_window_info:
+                if last_window_info:
+                    duration = int(time.time() - start_time)
+                    self.db_manager.record_activity(session_id, last_window_info['app_name'], last_window_info['window_name'], duration)
+                
+                last_window_info = window_info
+                start_time = time.time()
+            
+            time.sleep(1)  # 1秒ごとにチェック
+
+    def stop_tracking(self):
+        self.running = False
 
 # 使用例
 if __name__ == "__main__":
@@ -57,4 +65,4 @@ if __name__ == "__main__":
     def print_window_info(info):
         print(f"アプリ名: {info['app_name']}, ウィンドウ名: {info['window_name']}")
 
-    tracker.track_active_window(print_window_info, interval=5)  # 5秒ごとに取得
+    tracker.start_tracking(1, 1)  # セッションIDとポモドーロIDを仮に1とする

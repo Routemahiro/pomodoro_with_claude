@@ -85,12 +85,12 @@ class PomodoroGUI:
                 self.timer.resume()
                 self.start_pause_button.config(text="一時停止")
                 self.start_time = time.time() - (self.total_duration - self.timer.current_time)
-                self.db_manager.record_activity(self.current_session_id, self.current_pomodoro_id, "Resume Pomodoro", "")
+                self.db_manager.record_activity(self.current_session_id, "Resume Pomodoro", "", 0)
                 self.start_window_tracking()
             else:
                 self.timer.pause()
                 self.start_pause_button.config(text="再開")
-                self.db_manager.record_activity(self.current_session_id, self.current_pomodoro_id, "Pause Pomodoro", "")
+                self.db_manager.record_activity(self.current_session_id, "Pause Pomodoro", "", 0)
                 self.stop_window_tracking()
         else:
             self.timer.start()
@@ -98,17 +98,12 @@ class PomodoroGUI:
             self.start_time = time.time()
             self.total_duration = self.timer.current_time
             self.current_session_id = self.db_manager.start_session("work" if self.timer.is_work_session else "break")
-            self.current_pomodoro_id = self.db_manager.start_pomodoro()
+            self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id)  # ここを修正
             self.start_window_tracking()
             # 初回起動時に前回のセッション情報を表示
             self.show_previous_session_info("work" if self.timer.is_work_session else "break")
         self.update_button_states()
         self.smooth_update_progress()
-
-    def show_previous_session_info(self, session_type):
-        info = self.timer.get_previous_session_info(session_type)
-        self.session_info.delete(1.0, tk.END)
-        self.session_info.insert(tk.END, info)
 
     def reset_timer(self):
         if self.current_session_id:
@@ -143,6 +138,14 @@ class PomodoroGUI:
             self.progress_bar['value'] = self.smooth_progress
 
             self.master.after(16, self.smooth_update_progress)  # 約60FPSで更新
+            
+    def show_previous_session_info(self, session_type):
+        info = self.db_manager.get_previous_session_info(session_type)
+        self.session_info.delete(1.0, tk.END)
+        if info:
+            self.session_info.insert(tk.END, info)
+        else:
+            self.session_info.insert(tk.END, f"前回の{session_type}セッションのデータがありません。")
 
     def on_session_end(self, is_work_session, previous_session_info):
         if self.current_session_id:
@@ -160,12 +163,15 @@ class PomodoroGUI:
         
         # 新しいセッションとポモドーロの開始をデータベースに記録
         self.current_session_id = self.db_manager.start_session("work" if is_work_session else "break")
-        self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id)  # セッションIDを渡すように変更
+        self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id)
         self.stop_window_tracking()
 
-        # 前回のセッション情報を表示
+        # 前回のセッション情報を表示（None チェックを追加）
         self.session_info.delete(1.0, tk.END)
-        self.session_info.insert(tk.END, previous_session_info)
+        if previous_session_info is not None:
+            self.session_info.insert(tk.END, previous_session_info)
+        else:
+            self.session_info.insert(tk.END, "前回のセッション情報がありません。")
 
     def open_settings(self):
         if not self.timer.running:

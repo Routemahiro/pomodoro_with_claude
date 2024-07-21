@@ -99,6 +99,8 @@ class DatabaseManager:
         with self.lock:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
+                # duration が整数型であることを確認
+                duration = int(duration)
                 cursor.execute('''
                     INSERT INTO app_usage (session_id, app_name, window_name, duration)
                     VALUES (?, ?, ?, ?)
@@ -173,6 +175,8 @@ class DatabaseManager:
 
                     info = f"前回の{session_type}セッション (開始: {start_time}, 終了: {end_time}):\n"
                     for app, duration in top_apps:
+                        # duration を整数に変換
+                        duration = int(duration)
                         info += f"{app}: {duration//60}分{duration%60}秒\n"
                         cursor.execute('''
                             SELECT window_name, duration
@@ -183,11 +187,12 @@ class DatabaseManager:
                         ''', (session_id, app))
                         top_windows = cursor.fetchall()
                         for window, window_duration in top_windows:
+                            # window_duration を整数に変換
+                            window_duration = int(window_duration)
                             info += f"  - {window}: {window_duration//60}分{window_duration%60}秒\n"
+                    return info
                 else:
-                    info = f"前回の{session_type}セッションのデータがありません。"
-
-                return info
+                    return None
 
 # デバッグ用の使用例
 if __name__ == "__main__":
