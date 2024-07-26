@@ -5,9 +5,11 @@ from gui.settings_gui import SettingsGUI
 from core.enhanced_timer import EnhancedPomodoroTimer
 from utils.database_manager import DatabaseManager
 from utils.window_tracker import WindowTracker
-from core.settings_manager import SettingsManager  # この行を追加
+from core.settings_manager import SettingsManager
 import time
 import threading
+import datetime
+from tkinter import font as tkfont
 
 class PomodoroGUI:
     def __init__(self, master, settings_manager, window_tracker, db_manager):
@@ -32,7 +34,7 @@ class PomodoroGUI:
             self.update_timer_display,
             self.on_session_end,
             self.settings_manager,
-            self.db_manager  # ここを変更
+            self.db_manager
         )
 
         self.last_update_time = time.time()
@@ -98,7 +100,7 @@ class PomodoroGUI:
             self.start_time = time.time()
             self.total_duration = self.timer.current_time
             self.current_session_id = self.db_manager.start_session("work" if self.timer.is_work_session else "break")
-            self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id)  # ここを修正
+            self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id)
             self.start_window_tracking()
             # 初回起動時に前回のセッション情報を表示
             self.show_previous_session_info("work" if self.timer.is_work_session else "break")
@@ -142,10 +144,36 @@ class PomodoroGUI:
     def show_previous_session_info(self, session_type):
         info = self.db_manager.get_previous_session_info(session_type)
         self.session_info.delete(1.0, tk.END)
-        if info:
-            self.session_info.insert(tk.END, info)
-        else:
+        
+        if not info:
             self.session_info.insert(tk.END, f"前回の{session_type}セッションのデータがありません。")
+            return
+
+        # フォントの設定
+        default_font = tkfont.Font(font=self.session_info['font'])
+        bold_font = tkfont.Font(font=self.session_info['font'])
+        bold_font.configure(weight="bold")
+        
+        try:
+            lines = info.split('\n')
+            self.session_info.insert(tk.END, lines[0] + '\n\n', 'header')
+            
+            for line in lines[1:]:
+                if ':' in line and not line.startswith('  -'):
+                    # アプリケーション名の行
+                    app_name, usage = line.split(':', 1)
+                    self.session_info.insert(tk.END, app_name + ':', 'app_name')
+                    self.session_info.insert(tk.END, usage + '\n')
+                else:
+                    # その他の行
+                    self.session_info.insert(tk.END, line + '\n')
+            
+            # タグの設定
+            self.session_info.tag_configure('header', font=bold_font, foreground='#4a4a4a')
+            self.session_info.tag_configure('app_name', font=bold_font, foreground='#805AD5')
+        except Exception as e:
+            print(f"セッション情報の表示中にエラーが発生しました: {e}")
+            self.session_info.insert(tk.END, "セッション情報の表示中にエラーが発生しました。")
 
     def on_session_end(self, is_work_session, previous_session_info):
         if self.current_session_id:
@@ -167,12 +195,7 @@ class PomodoroGUI:
         self.stop_window_tracking()
 
         # 前回のセッション情報を表示
-        self.session_info.delete(1.0, tk.END)
-        try:
-            self.session_info.insert(tk.END, str(previous_session_info))
-        except Exception as e:
-            print(f"セッション情報の表示中にエラーが発生しました: {e}")
-            self.session_info.insert(tk.END, "セッション情報の表示中にエラーが発生しました。")
+        self.show_previous_session_info("work" if is_work_session else "break")
 
     def open_settings(self):
         if not self.timer.running:

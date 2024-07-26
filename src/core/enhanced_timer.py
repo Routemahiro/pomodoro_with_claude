@@ -20,11 +20,11 @@ class EnhancedPomodoroTimer(PomodoroTimer):
         
         # セッション切り替え時に前回のセッション情報を取得
         session_type = "break" if self.is_work_session else "work"  # 切り替わった後なので、前のセッションタイプを指定
-        previous_session_info = self.get_previous_session_info(session_type)
         
         # on_session_end コールバックを通じて情報を渡す
         if self.on_session_end is not None:
-            self.on_session_end(self.is_work_session, previous_session_info or "前回のセッション情報がありません。")
+            previous_session_info = self.get_previous_session_info(session_type)  # 前回のセッション情報を取得
+            self.on_session_end(self.is_work_session, previous_session_info)  # 修正
 
     def start_new_session(self):
         self.current_session_id = self.db_manager.start_session("work" if self.is_work_session else "break")

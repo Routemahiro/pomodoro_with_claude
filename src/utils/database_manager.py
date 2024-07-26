@@ -163,21 +163,23 @@ class DatabaseManager:
 
                 if session:
                     session_id, start_time, end_time = session
+                    # 日時形式を整える
+                    start_time = datetime.fromisoformat(start_time).strftime("%Y-%m-%d %H:%M:%S")
+                    end_time = datetime.fromisoformat(end_time).strftime("%Y-%m-%d %H:%M:%S")
+
                     cursor.execute('''
                         SELECT app_name, SUM(duration) as total_duration
                         FROM app_usage
                         WHERE session_id = ?
                         GROUP BY app_name
                         ORDER BY total_duration DESC
-                        LIMIT 3
                     ''', (session_id,))
-                    top_apps = cursor.fetchall()
+                    app_usage = cursor.fetchall()
 
-                    info = f"前回の{session_type}セッション (開始: {start_time}, 終了: {end_time}):\n"
-                    for app, duration in top_apps:
-                        # duration を整数に変換
-                        duration = int(duration)
-                        info += f"{app}: {duration//60}分{duration%60}秒\n"
+                    info = f"前回の{session_type}セッション (開始: {start_time}, 終了: {end_time}):\n\n"
+                    for app, duration in app_usage:
+                        minutes, seconds = divmod(duration, 60)
+                        info += f"{app}: {minutes}分{seconds:02d}秒\n"
                         cursor.execute('''
                             SELECT window_name, duration
                             FROM app_usage
@@ -187,12 +189,12 @@ class DatabaseManager:
                         ''', (session_id, app))
                         top_windows = cursor.fetchall()
                         for window, window_duration in top_windows:
-                            # window_duration を整数に変換
-                            window_duration = int(window_duration)
-                            info += f"  - {window}: {window_duration//60}分{window_duration%60}秒\n"
-                    return info
+                            w_minutes, w_seconds = divmod(window_duration, 60)
+                            info += f"  - {window}: {w_minutes}分{w_seconds:02d}秒\n"
+                        info += "\n"  # アプリケーションごとに空行を追加
+                    return info.strip()  # 最後の余分な改行を削除
                 else:
-                    return None
+                    return f"前回の{session_type}セッションのデータがありません。"
 
 # デバッグ用の使用例
 if __name__ == "__main__":
