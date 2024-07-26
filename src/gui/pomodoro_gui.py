@@ -32,7 +32,7 @@ class PomodoroGUI:
             self.update_timer_display,
             self.on_session_end,
             self.settings_manager,
-            "pomodoro.db"  # データベースのパスを指定
+            self.db_manager  # ここを変更
         )
 
         self.last_update_time = time.time()
@@ -166,12 +166,13 @@ class PomodoroGUI:
         self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id)
         self.stop_window_tracking()
 
-        # 前回のセッション情報を表示（None チェックを追加）
+        # 前回のセッション情報を表示
         self.session_info.delete(1.0, tk.END)
-        if previous_session_info is not None:
-            self.session_info.insert(tk.END, previous_session_info)
-        else:
-            self.session_info.insert(tk.END, "前回のセッション情報がありません。")
+        try:
+            self.session_info.insert(tk.END, str(previous_session_info))
+        except Exception as e:
+            print(f"セッション情報の表示中にエラーが発生しました: {e}")
+            self.session_info.insert(tk.END, "セッション情報の表示中にエラーが発生しました。")
 
     def open_settings(self):
         if not self.timer.running:
