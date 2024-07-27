@@ -172,8 +172,8 @@ class DatabaseManager:
                         FROM app_usage
                         WHERE session_id = ?
                         GROUP BY app_name
+                        HAVING total_duration >= 30
                         ORDER BY total_duration DESC
-                        LIMIT 5
                     ''', (session_id,))
                     app_usage = cursor.fetchall()
 
@@ -184,7 +184,7 @@ class DatabaseManager:
                         cursor.execute('''
                             SELECT window_name, duration
                             FROM app_usage
-                            WHERE session_id = ? AND app_name = ?
+                            WHERE session_id = ? AND app_name = ? AND duration >= 30
                             ORDER BY duration DESC
                             LIMIT 3
                         ''', (session_id, app))
