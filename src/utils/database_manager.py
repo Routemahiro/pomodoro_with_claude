@@ -173,6 +173,7 @@ class DatabaseManager:
                         WHERE session_id = ?
                         GROUP BY app_name
                         ORDER BY total_duration DESC
+                        LIMIT 5
                     ''', (session_id,))
                     app_usage = cursor.fetchall()
 
