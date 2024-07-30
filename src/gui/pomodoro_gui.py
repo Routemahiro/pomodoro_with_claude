@@ -86,30 +86,35 @@ class PomodoroGUI:
         self.session_info.pack(pady=10)
 
     def toggle_timer(self):
+        self.logger.debug("Toggle timer called")
         if self.timer.running:
             if self.timer.paused:
+                self.logger.debug("Resuming timer")
                 self.timer.resume()
                 self.start_pause_button.config(text="一時停止")
                 self.start_time = time.time() - (self.total_duration - self.timer.current_time)
                 self.db_manager.record_activity(self.current_session_id, "Resume Pomodoro", "", 0)
                 self.start_window_tracking()
             else:
+                self.logger.debug("Pausing timer")
                 self.timer.pause()
                 self.start_pause_button.config(text="再開")
                 self.db_manager.record_activity(self.current_session_id, "Pause Pomodoro", "", 0)
                 self.stop_window_tracking()
         else:
+            self.logger.debug("Starting new timer")
             self.timer.start()
             self.start_pause_button.config(text="一時停止")
             self.start_time = time.time()
             self.total_duration = self.timer.current_time
             self.current_session_id = self.db_manager.start_session("work" if self.timer.is_work_session else "break")
             self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id)
-            self.start_window_tracking()  # Window trackerをここで起動
+            self.start_window_tracking()
             # 初回起動時に前回のセッション情報を表示
             self.show_previous_session_info("work" if self.timer.is_work_session else "break")
         self.update_button_states()
         self.smooth_update_progress()
+        self.logger.debug(f"Timer state after toggle: running={self.timer.running}, paused={self.timer.paused}")
 
     def reset_timer(self):
         if self.current_session_id:

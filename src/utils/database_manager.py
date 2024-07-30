@@ -62,21 +62,26 @@ class DatabaseManager:
         with self.lock:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
+                start_time = datetime.now()
                 cursor.execute('''
                     INSERT INTO sessions (start_time, session_type)
                     VALUES (?, ?)
-                ''', (datetime.now(), session_type))
-                return cursor.lastrowid
+                ''', (start_time, session_type))
+                session_id = cursor.lastrowid
+                self.logger.debug(f"Started session: {session_id}, type: {session_type}, start time: {start_time}")
+                return session_id
 
     def end_session(self, session_id):
         with self.lock:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
+                end_time = datetime.now()
                 cursor.execute('''
                     UPDATE sessions
                     SET end_time = ?
                     WHERE id = ?
-                ''', (datetime.now(), session_id))
+                ''', (end_time, session_id))
+                self.logger.debug(f"Ended session: {session_id}, end time: {end_time}")
 
     def start_pomodoro(self, session_id):
         with self.lock:
@@ -179,7 +184,7 @@ class DatabaseManager:
                             FROM app_usage
                             WHERE session_id = ?
                             GROUP BY app_name
-                            HAVING total_duration >= 30
+                            HAVING total_duration >= 1
                             ORDER BY total_duration DESC
                         ''', (session_id,))
                         app_usage = cursor.fetchall()
@@ -192,7 +197,7 @@ class DatabaseManager:
                             cursor.execute('''
                                 SELECT window_name, duration
                                 FROM app_usage
-                                WHERE session_id = ? AND app_name = ? AND duration >= 30
+                                WHERE session_id = ? AND app_name = ? AND duration >= 1
                                 ORDER BY duration DESC
                                 LIMIT 3
                             ''', (session_id, app))
