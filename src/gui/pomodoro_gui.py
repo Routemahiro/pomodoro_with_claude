@@ -10,6 +10,7 @@ import time
 import threading
 import datetime
 from tkinter import font as tkfont
+import logging
 
 class PomodoroGUI:
     def __init__(self, master, settings_manager, window_tracker, db_manager):
@@ -47,6 +48,9 @@ class PomodoroGUI:
         self.tracking_thread = None
 
         self.create_widgets()
+
+        logging.basicConfig(filename='pomodoro_gui_debug.log', level=logging.DEBUG)  # ロギングの設定
+        self.logger = logging.getLogger(__name__)
 
     def create_widgets(self):
         initial_time = self.settings_manager.get_setting('work_time')
@@ -101,7 +105,7 @@ class PomodoroGUI:
             self.total_duration = self.timer.current_time
             self.current_session_id = self.db_manager.start_session("work" if self.timer.is_work_session else "break")
             self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id)
-            self.start_window_tracking()
+            self.start_window_tracking()  # Window trackerをここで起動
             # 初回起動時に前回のセッション情報を表示
             self.show_previous_session_info("work" if self.timer.is_work_session else "break")
         self.update_button_states()
@@ -142,12 +146,16 @@ class PomodoroGUI:
             self.master.after(16, self.smooth_update_progress)  # 約60FPSで更新
             
     def show_previous_session_info(self, session_type):
+        self.logger.debug(f"Showing previous session info for {session_type}")  # セッション情報表示のログ
         info = self.db_manager.get_previous_session_info(session_type)
         self.session_info.delete(1.0, tk.END)
         
         if not info:
+            self.logger.debug("No session info received")  # 情報が受信されなかったログ
             self.session_info.insert(tk.END, f"前回の{session_type}セッションのデータがありません。")
             return
+
+        self.logger.debug(f"Received session info: {info}")  # 受信した情報のログ
 
         # フォントの設定
         default_font = tkfont.Font(font=self.session_info['font'])
@@ -172,8 +180,13 @@ class PomodoroGUI:
             self.session_info.tag_configure('header', font=bold_font, foreground='#4a4a4a')
             self.session_info.tag_configure('app_name', font=bold_font, foreground='#805AD5')
         except Exception as e:
-            print(f"セッション情報の表示中にエラーが発生しました: {e}")
-            self.session_info.insert(tk.END, "セッション情報の表示中にエラーが発生しました。")
+            self.logger.error(f"Error displaying session info: {e}")  # エラーログ
+            self.session_info.insert(tk.END, f"セッション情報の表示中にエラーが発生しました: {e}")
+
+        # 表示されたテキストの長さを確認
+        displayed_text = self.session_info.get("1.0", tk.END)
+        self.logger.debug(f"Displayed text length: {len(displayed_text)}")  # 表示されたテキストの長さのログ
+        self.logger.debug(f"Displayed text: {displayed_text}")  # 表示されたテキストのログ
 
     def on_session_end(self, is_work_session, previous_session_info):
         if self.current_session_id:
@@ -222,13 +235,16 @@ class PomodoroGUI:
             self.tracking_thread = threading.Thread(target=self.window_tracker.start_tracking, 
                                                     args=(self.current_session_id, self.current_pomodoro_id))
             self.tracking_thread.start()
+        self.logger.debug(f"Started window tracking for session {self.current_session_id}")
 
     def stop_window_tracking(self):
         if self.tracking_thread and self.tracking_thread.is_alive():
+            self.window_tracker.stop_tracking()  # ウィンドウトラッキングを停止
             self.tracking_thread.join(timeout=1)  # 最大1秒待機
             if self.tracking_thread.is_alive():
-                # ここでスレッドを強制終了する方法を実装する必要があります
-                pass
+                self.logger.warning("Window tracking thread did not stop in time")
+            self.tracking_thread = None
+        self.logger.debug(f"Stopped window tracking for session {self.current_session_id}")
 
     def run(self):
         self.update_button_states()

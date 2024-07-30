@@ -1,6 +1,7 @@
 import ctypes
 import ctypes.wintypes
 import time
+import logging
 
 class WindowTracker:
     def __init__(self, db_manager):
@@ -9,19 +10,17 @@ class WindowTracker:
         self.psapi = ctypes.windll.psapi
         self.db_manager = db_manager
         self.running = True
+        self.logger = logging.getLogger(__name__)
 
     def get_active_window_info(self):
         hwnd = self.user32.GetForegroundWindow()
         
-        # ウィンドウ名を取得
         window_name = ctypes.create_unicode_buffer(255)
         self.user32.GetWindowTextW(hwnd, window_name, 255)
         
-        # プロセスIDを取得
         pid = ctypes.wintypes.DWORD()
         self.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         
-        # プロセス名（アプリ名）を取得
         hProcess = self.kernel32.OpenProcess(0x1000, False, pid)
         try:
             exe_path = (ctypes.c_char * 260)()
@@ -37,6 +36,7 @@ class WindowTracker:
         }
 
     def start_tracking(self, session_id, pomodoro_id):
+        self.logger.debug(f"Started tracking for session {session_id}, pomodoro {pomodoro_id}")
         last_window_info = None
         start_time = time.time()
 
@@ -47,14 +47,18 @@ class WindowTracker:
                 if last_window_info:
                     duration = int(time.time() - start_time)
                     self.db_manager.record_activity(session_id, last_window_info['app_name'], last_window_info['window_name'], duration)
+                    self.logger.debug(f"Recorded activity: {last_window_info['app_name']}, {last_window_info['window_name']}, {duration}s")
                 
                 last_window_info = window_info
                 start_time = time.time()
             
             time.sleep(1)  # 1秒ごとにチェック
 
+        self.logger.debug(f"Stopped tracking for session {session_id}")
+
     def stop_tracking(self):
         self.running = False
+        self.logger.debug("Received stop tracking signal")
 
 # 使用例
 if __name__ == "__main__":

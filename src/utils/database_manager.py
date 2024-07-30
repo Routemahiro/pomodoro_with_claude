@@ -2,6 +2,7 @@ import sqlite3
 import os
 from datetime import datetime, timedelta
 import threading
+import logging
 
 class DatabaseManager:
     def __init__(self, db_file='pomodoro.db'):
@@ -9,6 +10,8 @@ class DatabaseManager:
         self.conn = None
         self.lock = threading.Lock()
         self.create_tables()
+        logging.basicConfig(filename='pomodoro_debug.log', level=logging.DEBUG)
+        self.logger = logging.getLogger(__name__)
 
     def get_connection(self):
         if self.conn is None:
@@ -149,53 +152,63 @@ class DatabaseManager:
                 return cursor.fetchone()
 
     def get_previous_session_info(self, session_type):
+        self.logger.debug(f"Fetching previous session info for {session_type}")
         with self.lock:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT id, start_time, end_time
-                    FROM sessions
-                    WHERE session_type = ? AND end_time IS NOT NULL
-                    ORDER BY end_time DESC
-                    LIMIT 1
-                ''', (session_type,))
-                session = cursor.fetchone()
-
-                if session:
-                    session_id, start_time, end_time = session
-                    # 日時形式を整える
-                    start_time = datetime.fromisoformat(start_time).strftime("%Y-%m-%d %H:%M:%S")
-                    end_time = datetime.fromisoformat(end_time).strftime("%Y-%m-%d %H:%M:%S")
-
+                try:
                     cursor.execute('''
-                        SELECT app_name, SUM(duration) as total_duration
-                        FROM app_usage
-                        WHERE session_id = ?
-                        GROUP BY app_name
-                        HAVING total_duration >= 30
-                        ORDER BY total_duration DESC
-                    ''', (session_id,))
-                    app_usage = cursor.fetchall()
+                        SELECT id, start_time, end_time
+                        FROM sessions
+                        WHERE session_type = ? AND end_time IS NOT NULL
+                        ORDER BY end_time DESC
+                        LIMIT 1
+                    ''', (session_type,))
+                    session = cursor.fetchone()
 
-                    info = f"前回の{session_type}セッション (開始: {start_time}, 終了: {end_time}):\n\n"
-                    for app, duration in app_usage:
-                        minutes, seconds = divmod(duration, 60)
-                        info += f"{app}: {minutes}分{seconds:02d}秒\n"
+                    if session:
+                        session_id, start_time, end_time = session
+                        self.logger.debug(f"Found session: {session_id}, {start_time}, {end_time}")
+                        
+                        # 日時形式を整える
+                        start_time = datetime.fromisoformat(start_time).strftime("%Y-%m-%d %H:%M:%S")
+                        end_time = datetime.fromisoformat(end_time).strftime("%Y-%m-%d %H:%M:%S")
+
                         cursor.execute('''
-                            SELECT window_name, duration
+                            SELECT app_name, SUM(duration) as total_duration
                             FROM app_usage
-                            WHERE session_id = ? AND app_name = ? AND duration >= 30
-                            ORDER BY duration DESC
-                            LIMIT 3
-                        ''', (session_id, app))
-                        top_windows = cursor.fetchall()
-                        for window, window_duration in top_windows:
-                            w_minutes, w_seconds = divmod(window_duration, 60)
-                            info += f"  - {window}: {w_minutes}分{w_seconds:02d}秒\n"
-                        info += "\n"  # アプリケーションごとに空行を追加
-                    return info.strip()  # 最後の余分な改行を削除
-                else:
-                    return f"前回の{session_type}セッションのデータがありません。"
+                            WHERE session_id = ?
+                            GROUP BY app_name
+                            HAVING total_duration >= 30
+                            ORDER BY total_duration DESC
+                        ''', (session_id,))
+                        app_usage = cursor.fetchall()
+                        self.logger.debug(f"App usage: {app_usage}")
+
+                        info = f"前回の{session_type}セッション (開始: {start_time}, 終了: {end_time}):\n\n"
+                        for app, duration in app_usage:
+                            minutes, seconds = divmod(duration, 60)
+                            info += f"{app}: {minutes}分{seconds:02d}秒\n"
+                            cursor.execute('''
+                                SELECT window_name, duration
+                                FROM app_usage
+                                WHERE session_id = ? AND app_name = ? AND duration >= 30
+                                ORDER BY duration DESC
+                                LIMIT 3
+                            ''', (session_id, app))
+                            top_windows = cursor.fetchall()
+                            for window, window_duration in top_windows:
+                                w_minutes, w_seconds = divmod(window_duration, 60)
+                                info += f"  - {window}: {w_minutes}分{w_seconds:02d}秒\n"
+                            info += "\n"  # アプリケーションごとに空行を追加
+                        self.logger.debug(f"Generated info: {info}")
+                        return info.strip()  # 最後の余分な改行を削除
+                    else:
+                        self.logger.debug(f"No previous {session_type} session found")
+                        return f"前回の{session_type}セッションのデータがありません。"
+                except Exception as e:
+                    self.logger.error(f"Error in get_previous_session_info: {e}")
+                    return f"セッション情報の取得中にエラーが発生しました: {e}"
 
 # デバッグ用の使用例
 if __name__ == "__main__":
