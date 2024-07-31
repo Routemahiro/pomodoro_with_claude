@@ -93,13 +93,13 @@ class PomodoroGUI:
                 self.timer.resume()
                 self.start_pause_button.config(text="一時停止")
                 self.start_time = time.time() - (self.total_duration - self.timer.current_time)
-                self.db_manager.record_activity(self.current_session_id, "Resume Pomodoro", "", 0)
+                self.db_manager.record_activity(self.timer.current_session_id, "Resume Pomodoro", "", 0)
                 self.start_window_tracking()
             else:
                 self.logger.debug("Pausing timer")
                 self.timer.pause()
                 self.start_pause_button.config(text="再開")
-                self.db_manager.record_activity(self.current_session_id, "Pause Pomodoro", "", 0)
+                self.db_manager.record_activity(self.timer.current_session_id, "Pause Pomodoro", "", 0)
                 self.stop_window_tracking()
         else:
             self.logger.debug("Starting new timer")
@@ -107,8 +107,6 @@ class PomodoroGUI:
             self.start_pause_button.config(text="一時停止")
             self.start_time = time.time()
             self.total_duration = self.timer.current_time
-            self.current_session_id = self.db_manager.start_session("work" if self.timer.is_work_session else "break")
-            self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id)
             self.start_window_tracking()
             # 初回起動時に前回のセッション情報を表示
             self.show_previous_session_info("work" if self.timer.is_work_session else "break")
@@ -138,6 +136,7 @@ class PomodoroGUI:
         minutes, seconds = divmod(time_left, 60)
         self.timer_display.config(text=f"{minutes:02d}:{seconds:02d}")
         self.session_label.config(text="作業セッション" if is_work_session else "休憩セッション")
+        self.logger.debug(f"Updated timer display: {minutes:02d}:{seconds:02d}, {'work' if is_work_session else 'break'} session")
 
     def smooth_update_progress(self):
         if self.timer.running and not self.timer.paused:
@@ -194,10 +193,8 @@ class PomodoroGUI:
         self.logger.debug(f"Displayed text: {displayed_text}")  # 表示されたテキストのログ
 
     def on_session_end(self, is_work_session, previous_session_info):
-        if self.current_session_id:
-            self.db_manager.end_session(self.current_session_id)
-        if self.current_pomodoro_id:
-            self.db_manager.end_pomodoro(self.current_pomodoro_id, True)
+        self.logger.debug(f"Session ended. New session: {'work' if is_work_session else 'break'}")
+        self.stop_window_tracking()  # ウィンドウトラッキングを停止
         
         if not self.settings_manager.get_setting('auto_start'):
             self.start_pause_button.config(text="スタート")
@@ -205,15 +202,13 @@ class PomodoroGUI:
         self.smooth_progress = 0
         self.progress_bar['value'] = 0
         self.start_time = time.time()
-        self.total_duration = self.timer.work_time if is_work_session else (self.timer.short_break if self.timer.session_count % 4 != 0 else self.timer.long_break)
+        self.total_duration = self.timer.current_time
         
-        # 新しいセッションとポモドーロの開始をデータベースに記録
-        self.current_session_id = self.db_manager.start_session("work" if is_work_session else "break")
-        self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id)
-        self.stop_window_tracking()
-
         # 前回のセッション情報を表示
-        self.show_previous_session_info("work" if is_work_session else "break")
+        self.show_previous_session_info("break" if is_work_session else "work")
+        
+        # 新しいセッションのウィンドウトラッキングを開始
+        self.start_window_tracking()
 
     def open_settings(self):
         if not self.timer.running:
@@ -238,9 +233,9 @@ class PomodoroGUI:
     def start_window_tracking(self):
         if self.tracking_thread is None or not self.tracking_thread.is_alive():
             self.tracking_thread = threading.Thread(target=self.window_tracker.start_tracking, 
-                                                    args=(self.current_session_id, self.current_pomodoro_id))
+                                                    args=(self.timer.current_session_id, self.current_pomodoro_id))
             self.tracking_thread.start()
-        self.logger.debug(f"Started window tracking for session {self.current_session_id}")
+        self.logger.debug(f"Started window tracking for session {self.timer.current_session_id}")
 
     def stop_window_tracking(self):
         if self.tracking_thread and self.tracking_thread.is_alive():
@@ -249,7 +244,7 @@ class PomodoroGUI:
             if self.tracking_thread.is_alive():
                 self.logger.warning("Window tracking thread did not stop in time")
             self.tracking_thread = None
-        self.logger.debug(f"Stopped window tracking for session {self.current_session_id}")
+        self.logger.debug(f"Stopped window tracking for session {self.timer.current_session_id}")
 
     def run(self):
         self.update_button_states()

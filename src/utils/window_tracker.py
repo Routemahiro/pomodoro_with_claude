@@ -11,6 +11,8 @@ class WindowTracker:
         self.db_manager = db_manager
         self.running = True
         self.logger = logging.getLogger(__name__)
+        self.current_session_id = None
+        self.current_pomodoro_id = None
 
     def get_active_window_info(self):
         hwnd = self.user32.GetForegroundWindow()
@@ -36,7 +38,10 @@ class WindowTracker:
         }
 
     def start_tracking(self, session_id, pomodoro_id):
-        self.logger.debug(f"Started tracking for session {session_id}, pomodoro {pomodoro_id}")
+        self.current_session_id = session_id
+        self.current_pomodoro_id = pomodoro_id
+        self.logger.debug(f"Started tracking for session {self.current_session_id}, pomodoro {self.current_pomodoro_id}")
+        self.running = True
         last_window_info = None
         start_time = time.time()
 
@@ -46,19 +51,24 @@ class WindowTracker:
             if window_info != last_window_info:
                 if last_window_info:
                     duration = int(time.time() - start_time)
-                    self.db_manager.record_activity(session_id, last_window_info['app_name'], last_window_info['window_name'], duration)
-                    self.logger.debug(f"Recorded activity: {last_window_info['app_name']}, {last_window_info['window_name']}, {duration}s")
+                    if self.current_session_id:  # セッションIDがNoneでないことを確認
+                        self.db_manager.record_activity(self.current_session_id, last_window_info['app_name'], last_window_info['window_name'], duration)
+                        self.logger.debug(f"Recorded activity: {last_window_info['app_name']}, {last_window_info['window_name']}, {duration}s for session {self.current_session_id}")
+                    else:
+                        self.logger.warning("Attempted to record activity but session_id is None")
                 
                 last_window_info = window_info
                 start_time = time.time()
             
             time.sleep(1)  # 1秒ごとにチェック
 
-        self.logger.debug(f"Stopped tracking for session {session_id}")
+        self.logger.debug(f"Stopped tracking for session {self.current_session_id}")
 
     def stop_tracking(self):
         self.running = False
         self.logger.debug("Received stop tracking signal")
+        self.current_session_id = None
+        self.current_pomodoro_id = None
 
 # 使用例
 if __name__ == "__main__":

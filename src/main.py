@@ -12,7 +12,7 @@ def main():
     
     app = PomodoroGUI(root, settings_manager, window_tracker, db_manager)
     
-    root.mainloop()
+    root.mainloop() 
 
 if __name__ == "__main__":
     main()
