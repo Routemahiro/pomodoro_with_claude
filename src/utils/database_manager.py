@@ -19,50 +19,51 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # sessionsテーブルの作成
+            # sessionsテーブルの作成 (ポモドーロサイクル全体を表す)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS sessions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_type TEXT NOT NULL,
+                    cycle_number INTEGER NOT NULL,
                     start_time DATETIME NOT NULL,
                     end_time DATETIME
                 )
             ''')
             
-            # app_usageテーブルの作成
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS app_usage (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id INTEGER,
-                    app_name TEXT NOT NULL,
-                    window_name TEXT NOT NULL,
-                    duration INTEGER NOT NULL,
-                    FOREIGN KEY (session_id) REFERENCES sessions(id)
-                )
-            ''')
-
-            # pomodoros テーブルの作成
+            # pomodorosテーブルの作成 (個々のポモドーロを表す)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS pomodoros (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     session_id INTEGER,
+                    pomodoro_type TEXT NOT NULL,
                     start_time DATETIME NOT NULL,
                     end_time DATETIME,
                     completed BOOLEAN,
                     FOREIGN KEY (session_id) REFERENCES sessions(id)
                 )
             ''')
+
+            # app_usageテーブルの作成
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS app_usage (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pomodoro_id INTEGER,
+                    app_name TEXT NOT NULL,
+                    window_name TEXT NOT NULL,
+                    duration INTEGER NOT NULL,
+                    FOREIGN KEY (pomodoro_id) REFERENCES pomodoros(id)
+                )
+            ''')
             
         print("データベーステーブルが正常に作成されました。")
 
-    def start_session(self, session_type):
+    def start_session(self, cycle_number):
         with self.lock:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    INSERT INTO sessions (start_time, session_type)
+                    INSERT INTO sessions (cycle_number, start_time)
                     VALUES (?, ?)
-                ''', (datetime.now(), session_type))
+                ''', (cycle_number, datetime.now()))
                 return cursor.lastrowid
 
     def end_session(self, session_id):
@@ -75,14 +76,14 @@ class DatabaseManager:
                     WHERE id = ?
                 ''', (datetime.now(), session_id))
 
-    def start_pomodoro(self, session_id):
+    def start_pomodoro(self, session_id, pomodoro_type):
         with self.lock:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    INSERT INTO pomodoros (session_id, start_time)
-                    VALUES (?, ?)
-                ''', (session_id, datetime.now()))
+                    INSERT INTO pomodoros (session_id, pomodoro_type, start_time)
+                    VALUES (?, ?, ?)
+                ''', (session_id, pomodoro_type, datetime.now()))
                 return cursor.lastrowid
 
     def end_pomodoro(self, pomodoro_id, completed):
@@ -95,16 +96,25 @@ class DatabaseManager:
                     WHERE id = ?
                 ''', (datetime.now(), completed, pomodoro_id))
 
-    def record_activity(self, session_id, app_name, window_name, duration):
+    def record_activity(self, pomodoro_id, app_name, window_name, duration):
         with self.lock:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                # duration が整数型であることを確認
                 duration = int(duration)
                 cursor.execute('''
-                    INSERT INTO app_usage (session_id, app_name, window_name, duration)
+                    INSERT INTO app_usage (pomodoro_id, app_name, window_name, duration)
                     VALUES (?, ?, ?, ?)
-                ''', (session_id, app_name, window_name, duration))
+                ''', (pomodoro_id, app_name, window_name, duration))
+
+    def complete_pomodoro_cycle(self, session_id):
+        with self.lock:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE sessions
+                    SET end_time = ?
+                    WHERE id = ?
+                ''', (datetime.now(), session_id))
 
     def get_daily_summary(self, date):
         with self.lock:
@@ -113,7 +123,8 @@ class DatabaseManager:
                 cursor.execute('''
                     SELECT app_name, SUM(duration) as total_duration
                     FROM app_usage
-                    JOIN sessions ON app_usage.session_id = sessions.id
+                    JOIN pomodoros ON app_usage.pomodoro_id = pomodoros.id
+                    JOIN sessions ON pomodoros.session_id = sessions.id
                     WHERE DATE(sessions.start_time) = DATE(?)
                     GROUP BY app_name
                     ORDER BY total_duration DESC
@@ -125,10 +136,10 @@ class DatabaseManager:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    SELECT a.app_name, a.window_name, s.session_type, s.start_time
+                    SELECT a.app_name, a.window_name, p.pomodoro_type, p.start_time
                     FROM app_usage a
-                    JOIN sessions s ON a.session_id = s.id
-                    ORDER BY s.start_time DESC
+                    JOIN pomodoros p ON a.pomodoro_id = p.id
+                    ORDER BY p.start_time DESC
                     LIMIT ?
                 ''', (limit,))
                 return cursor.fetchall()
@@ -138,64 +149,64 @@ class DatabaseManager:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    SELECT s.start_time, s.end_time, s.session_type,
-                           COUNT(DISTINCT a.id) as activity_count,
+                    SELECT s.start_time, s.end_time, s.cycle_number,
+                           COUNT(DISTINCT p.id) as pomodoro_count,
                            GROUP_CONCAT(DISTINCT a.app_name) as used_apps
                     FROM sessions s
-                    LEFT JOIN app_usage a ON s.id = a.session_id
+                    LEFT JOIN pomodoros p ON s.id = p.session_id
+                    LEFT JOIN app_usage a ON p.id = a.pomodoro_id
                     WHERE s.id = ?
                     GROUP BY s.id
                 ''', (session_id,))
                 return cursor.fetchone()
 
-    def get_previous_session_info(self, session_type):
+    def get_previous_session_info(self, pomodoro_type):
         with self.lock:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT id, start_time, end_time
-                    FROM sessions
-                    WHERE session_type = ? AND end_time IS NOT NULL
+                    FROM pomodoros
+                    WHERE pomodoro_type = ? AND end_time IS NOT NULL
                     ORDER BY end_time DESC
                     LIMIT 1
-                ''', (session_type,))
-                session = cursor.fetchone()
+                ''', (pomodoro_type,))
+                pomodoro = cursor.fetchone()
 
-                if session:
-                    session_id, start_time, end_time = session
-                    # 日時形式を整える
+                if pomodoro:
+                    pomodoro_id, start_time, end_time = pomodoro
                     start_time = datetime.fromisoformat(start_time).strftime("%Y-%m-%d %H:%M:%S")
                     end_time = datetime.fromisoformat(end_time).strftime("%Y-%m-%d %H:%M:%S")
 
                     cursor.execute('''
                         SELECT app_name, SUM(duration) as total_duration
                         FROM app_usage
-                        WHERE session_id = ?
+                        WHERE pomodoro_id = ?
                         GROUP BY app_name
                         ORDER BY total_duration DESC
                         LIMIT 5
-                    ''', (session_id,))
+                    ''', (pomodoro_id,))
                     app_usage = cursor.fetchall()
 
-                    info = f"前回の{session_type}セッション (開始: {start_time}, 終了: {end_time}):\n\n"
+                    info = f"前回の{pomodoro_type}セッション (開始: {start_time}, 終了: {end_time}):\n\n"
                     for app, duration in app_usage:
                         minutes, seconds = divmod(duration, 60)
                         info += f"{app}: {minutes}分{seconds:02d}秒\n"
                         cursor.execute('''
                             SELECT window_name, duration
                             FROM app_usage
-                            WHERE session_id = ? AND app_name = ?
+                            WHERE pomodoro_id = ? AND app_name = ?
                             ORDER BY duration DESC
                             LIMIT 3
-                        ''', (session_id, app))
+                        ''', (pomodoro_id, app))
                         top_windows = cursor.fetchall()
                         for window, window_duration in top_windows:
                             w_minutes, w_seconds = divmod(window_duration, 60)
                             info += f"  - {window}: {w_minutes}分{w_seconds:02d}秒\n"
-                        info += "\n"  # アプリケーションごとに空行を追加
-                    return info.strip()  # 最後の余分な改行を削除
+                        info += "\n"
+                    return info.strip()
                 else:
-                    return f"前回の{session_type}セッションのデータがありません。"
+                    return f"前回の{pomodoro_type}セッションのデータがありません。"
 
 # デバッグ用の使用例
 if __name__ == "__main__":
@@ -206,7 +217,7 @@ if __name__ == "__main__":
         print(activity)
     
     print("\n最新セッションのサマリー:")
-    latest_session = db_manager.start_session("work")
+    latest_session = db_manager.start_session(1)
     summary = db_manager.get_session_summary(latest_session)
     print(summary)
     

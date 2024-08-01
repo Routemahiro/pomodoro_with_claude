@@ -18,7 +18,7 @@ class PomodoroGUI:
         self.window_tracker = window_tracker
         self.db_manager = db_manager
 
-        self.master.title("シュタインズ・ゲート風ポモドーロタイマー")
+        self.master.title("ポモドーロタイマー")
         self.master.geometry("600x400")
         self.master.configure(bg='#1e1e1e')
 
@@ -68,7 +68,7 @@ class PomodoroGUI:
         button_frame = tk.Frame(self.master, bg='#1e1e1e')
         button_frame.pack(pady=20)
 
-        self.start_pause_button = ttk.Button(button_frame, text="エル・プサイ・コングルゥ", command=self.toggle_timer)
+        self.start_pause_button = ttk.Button(button_frame, text="開始", command=self.toggle_timer)
         self.start_pause_button.pack(side=tk.LEFT, padx=5)
 
         self.reset_button = ttk.Button(button_frame, text="リセット", command=self.reset_timer)
@@ -100,7 +100,7 @@ class PomodoroGUI:
             self.start_time = time.time()
             self.total_duration = self.timer.current_time
             self.current_session_id = self.db_manager.start_session("work" if self.timer.is_work_session else "break")
-            self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id)
+            self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id, "work")  # "work"を追加
             self.start_window_tracking()
             # 初回起動時に前回のセッション情報を表示
             self.show_previous_session_info("work" if self.timer.is_work_session else "break")
@@ -191,7 +191,7 @@ class PomodoroGUI:
         
         # 新しいセッションとポモドーロの開始をデータベースに記録
         self.current_session_id = self.db_manager.start_session("work" if is_work_session else "break")
-        self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id)
+        self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id, "work" if is_work_session else "break")  # ポモドーロタイプを追加
         self.stop_window_tracking()
 
         # 前回のセッション情報を表示
