@@ -87,24 +87,23 @@ class PomodoroGUI:
                 self.timer.resume()
                 self.start_pause_button.config(text="一時停止")
                 self.start_time = time.time() - (self.total_duration - self.timer.current_time)
-                self.db_manager.record_activity(self.current_session_id, "Resume Pomodoro", "", 0)
+                self.db_manager.record_activity(self.current_pomodoro_id, "Resume Pomodoro", "", 0)
                 self.start_window_tracking()
             else:
                 self.timer.pause()
                 self.start_pause_button.config(text="再開")
-                self.db_manager.record_activity(self.current_session_id, "Pause Pomodoro", "", 0)
+                self.db_manager.record_activity(self.current_pomodoro_id, "Pause Pomodoro", "", 0)
                 self.stop_window_tracking()
         else:
             self.timer.start()
             self.start_pause_button.config(text="一時停止")
             self.start_time = time.time()
             self.total_duration = self.timer.current_time
-            session_type = "work" if self.timer.is_work_session else "break"
-            self.current_session_id = self.db_manager.start_session(session_type)
-            self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id, session_type)  # ここを修正
+            self.current_session_id = self.timer.current_session_id
+            self.current_pomodoro_id = self.timer.current_pomodoro_id
             self.start_window_tracking()
             # 初回起動時に前回のセッション情報を表示
-            self.show_previous_session_info(session_type)
+            self.show_previous_session_info("work")
         self.update_button_states()
         self.smooth_update_progress()
 
