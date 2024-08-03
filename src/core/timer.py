@@ -1,5 +1,6 @@
 import time
 import threading
+from datetime import datetime, timedelta
 
 class PomodoroTimer:
     def __init__(self, work_time, short_break, long_break, on_tick, on_session_end, settings_manager):
@@ -17,10 +18,13 @@ class PomodoroTimer:
         self.paused = False
         
         self.timer_thread = None
+        self.last_switch_time = None
+        self.min_session_duration = timedelta(seconds=30)  # 最小セッション時間を30秒に設定
 
     def start(self):
         if not self.running:
             self.running = True
+            self.last_switch_time = datetime.now()
             self.timer_thread = threading.Thread(target=self._run_timer)
             self.timer_thread.start()
 
@@ -38,6 +42,7 @@ class PomodoroTimer:
         self.is_work_session = True
         self.session_count = 0
         self.paused = False
+        self.last_switch_time = None
 
     def _run_timer(self):
         while self.running:
@@ -51,6 +56,12 @@ class PomodoroTimer:
                 time.sleep(1)
 
     def _switch_session(self):
+        current_time = datetime.now()
+        if self.last_switch_time and (current_time - self.last_switch_time) < self.min_session_duration:
+            print(f"セッション切り替えが早すぎます。無視します。")
+            self.current_time = 1  # 次のティックで再度チェック
+            return
+
         self.session_count += 1
         if self.is_work_session:
             if self.session_count % 4 == 0:
@@ -62,10 +73,12 @@ class PomodoroTimer:
             self.current_time = self.work_time
             self.is_work_session = True
         
-        self.on_session_end(self.is_work_session, None)  # Noneを渡すようにする
+        self.on_session_end(self.is_work_session, None)
         
         if not self.settings_manager.get_setting('auto_start'):
             self.pause()
+
+        self.last_switch_time = current_time
 
     def update_settings(self, work_time, short_break, long_break):
         self.work_time = work_time * 60

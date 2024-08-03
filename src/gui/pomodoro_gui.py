@@ -99,11 +99,12 @@ class PomodoroGUI:
             self.start_pause_button.config(text="一時停止")
             self.start_time = time.time()
             self.total_duration = self.timer.current_time
-            self.current_session_id = self.db_manager.start_session("work" if self.timer.is_work_session else "break")
-            self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id, "work")  # "work"を追加
+            session_type = "work" if self.timer.is_work_session else "break"
+            self.current_session_id = self.db_manager.start_session(session_type)
+            self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id, session_type)  # ここを修正
             self.start_window_tracking()
             # 初回起動時に前回のセッション情報を表示
-            self.show_previous_session_info("work" if self.timer.is_work_session else "break")
+            self.show_previous_session_info(session_type)
         self.update_button_states()
         self.smooth_update_progress()
 
@@ -116,7 +117,7 @@ class PomodoroGUI:
         self.timer.reset()
         initial_time = self.settings_manager.get_setting('work_time')
         self.update_timer_display(initial_time * 60, True)
-        self.start_pause_button.config(text="エル・プサイ・コングルゥ")
+        self.start_pause_button.config(text="スタート")
         self.update_button_states()
         self.smooth_progress = 0
         self.progress_bar['value'] = 0
@@ -187,15 +188,17 @@ class PomodoroGUI:
         self.smooth_progress = 0
         self.progress_bar['value'] = 0
         self.start_time = time.time()
-        self.total_duration = self.timer.work_time if is_work_session else (self.timer.short_break if self.timer.session_count % 4 != 0 else self.timer.long_break)
+        self.total_duration = self.timer.current_time
         
         # 新しいセッションとポモドーロの開始をデータベースに記録
-        self.current_session_id = self.db_manager.start_session("work" if is_work_session else "break")
-        self.current_pomodoro_id = self.db_manager.start_pomodoro(self.current_session_id, "work" if is_work_session else "break")  # ポモドーロタイプを追加
+        session_type = "work" if is_work_session else "break"
+        self.current_session_id = self.timer.current_session_id
+        self.current_pomodoro_id = self.timer.current_pomodoro_id
         self.stop_window_tracking()
+        self.start_window_tracking()
 
         # 前回のセッション情報を表示
-        self.show_previous_session_info("work" if is_work_session else "break")
+        self.show_previous_session_info(session_type)
 
     def open_settings(self):
         if not self.timer.running:
